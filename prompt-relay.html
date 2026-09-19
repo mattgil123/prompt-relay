@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>prompt relay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0c10;
+    --panel:#10141b;
+    --panel-2:#151a22;
+    --line:#232a35;
+    --text:#d7dde5;
+    --text-dim:#7c8697;
+    --green:#3ddc84;
+    --amber:#c8a84b;
+    --red:#e05c5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'JetBrains Mono', monospace;
+    font-size:14px;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  ::selection{background:var(--green);color:#0a0c10;}
+  a{color:var(--green);}
+  button{
+    font-family:inherit;
+    font-size:13px;
+    cursor:pointer;
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:8px 14px;
+    transition:border-color .15s ease, color .15s ease;
+  }
+  button:hover{border-color:var(--green);color:var(--green);}
+  button:disabled{opacity:.4;cursor:default;}
+  button:disabled:hover{border-color:var(--line);color:var(--text);}
+  button.primary{background:var(--green);color:#0a0c10;border-color:var(--green);font-weight:700;}
+  button.primary:hover{background:#33c476;color:#0a0c10;}
+  input[type=text],input[type=password],textarea,select{
+    font-family:inherit;
+    font-size:13px;
+    background:#0d1016;
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:8px 10px;
+    width:100%;
+  }
+  input:focus,textarea:focus,select:focus{outline:1px solid var(--green);border-color:var(--green);}
+  .dim{color:var(--text-dim);}
+  .lower{text-transform:lowercase;}
+
+  /* --- lock screen --- */
+  #lock{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);z-index:50;
+  }
+  .lock-box{
+    width:min(360px,90vw);
+    border:1px solid var(--line);
+    background:var(--panel);
+    padding:28px;
+    border-radius:4px;
+  }
+  .lock-box h1{font-size:15px;margin:0 0 4px;color:var(--green);}
+  .lock-box p{margin:0 0 18px;color:var(--text-dim);font-size:12px;}
+  .lock-box input{margin-bottom:10px;}
+  .lock-err{color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px;}
+
+  /* --- layout --- */
+  #app{display:none;max-width:1180px;margin:0 auto;padding:22px 20px 60px;}
+  header{
+    display:flex;justify-content:space-between;align-items:baseline;
+    border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:20px;
+    flex-wrap:wrap;gap:10px;
+  }
+  header h1{font-size:16px;margin:0;letter-spacing:.5px;}
+  header h1 .brk{color:var(--green);}
+  header .actions{display:flex;gap:8px;}
+
+  section{margin-bottom:26px;}
+  .section-label{
+    font-size:11px;color:var(--text-dim);letter-spacing:1px;margin-bottom:10px;
+  }
+
+  /* composer */
+  #composer textarea{min-height:96px;resize:vertical;}
+  .provider-row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;}
+  .provider-chip{
+    display:flex;align-items:center;gap:6px;
+    border:1px solid var(--line);border-radius:3px;padding:6px 10px;
+    font-size:12px;cursor:pointer;user-select:none;color:var(--text-dim);
+  }
+  .provider-chip input{width:auto;margin:0;}
+  .provider-chip.on{border-color:var(--green);color:var(--text);}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim);display:inline-block;}
+  .dot.ready{background:var(--green);}
+  .dot.missing{background:var(--amber);}
+  .composer-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px;}
+
+  /* results grid */
+  #results{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;
+  }
+  .card{
+    border:1px solid var(--line);background:var(--panel);border-radius:4px;
+    display:flex;flex-direction:column;min-height:160px;
+  }
+  .card-head{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 12px;border-bottom:1px solid var(--line);font-size:12px;
+  }
+  .card-body{
+    padding:12px;font-size:12.5px;white-space:pre-wrap;word-break:break-word;
+    max-height:280px;overflow-y:auto;flex:1;color:var(--text);
+  }
+  .card-body.err{color:var(--red);}
+  .card-body.pending{color:var(--text-dim);}
+  .card-foot{
+    padding:8px 12px;border-top:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);
+  }
+  .card-foot button{padding:3px 8px;font-size:11px;}
+
+  /* history */
+  #history{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;}
+  .hist-tile{
+    border:1px solid var(--line);background:var(--panel-2);border-radius:4px;padding:10px 12px;
+    cursor:pointer;font-size:12px;
+  }
+  .hist-tile:hover{border-color:var(--amber);}
+  .hist-tile .n{color:var(--amber);font-size:11px;}
+  .hist-tile .summary{margin:4px 0;color:var(--text);}
+  .hist-tile .ts{color:var(--text-dim);font-size:10.5px;}
+  .empty{color:var(--text-dim);font-size:12px;}
+
+  /* settings */
+  #settings{display:none;border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:16px;margin-bottom:26px;}
+  .settings-row{
+    display:grid;grid-template-columns:110px 1fr 130px;gap:8px;align-items:center;margin-bottom:8px;
+  }
+  .settings-row label{font-size:12px;color:var(--text-dim);}
+  .settings-note{font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6;}
+</style>
+</head>
+<body>
+
+<div id="lock">
+  <div class="lock-box">
+    <h1 id="lock-title">[locked] prompt relay</h1>
+    <p id="lock-sub">enter password to continue</p>
+    <input type="password" id="pw-input" placeholder="password">
+    <div class="lock-err" id="pw-err"></div>
+    <button class="primary" id="pw-submit" style="width:100%;">unlock</button>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <h1><span class="brk">[relay]</span> prompt dashboard</h1>
+    <div class="actions">
+      <button id="toggle-settings">settings</button>
+      <button id="lock-btn">lock</button>
+    </div>
+  </header>
+
+  <section id="settings">
+    <div class="section-label">[00] api keys &amp; models — stored only in this browser's local storage</div>
+    <div id="settings-rows"></div>
+    <div class="settings-note">
+      keys are saved with <code>localStorage</code> on this device only — nothing is sent anywhere except directly from your
+      browser to each provider's own api when you send a prompt. some providers (notably openai, xai, perplexity) block
+      direct browser requests with cors — if a card shows a network/cors error, that provider needs a small server-side
+      relay to work from a static page. copilot has no public chat api, so it isn't included.
+    </div>
+  </section>
+
+  <section id="composer">
+    <div class="section-label">[01] compose</div>
+    <textarea id="prompt-input" placeholder="type a prompt to send to every selected model..."></textarea>
+    <div class="provider-row" id="provider-row"></div>
+    <div class="composer-actions">
+      <span class="dim" id="char-count">0 chars</span>
+      <button class="primary" id="send-btn">send to selected →</button>
+    </div>
+  </section>
+
+  <section id="results-section">
+    <div class="section-label">[02] responses</div>
+    <div id="results"><div class="empty">no prompt sent yet.</div></div>
+  </section>
+
+  <section id="history-section">
+    <div class="section-label">[03] last 5 prompts</div>
+    <div id="history"><div class="empty">history will appear here.</div></div>
+  </section>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const PROVIDERS = [
+    { id:'claude',     label:'claude',      defaultModel:'claude-sonnet-4-6' },
+    { id:'chatgpt',    label:'chatgpt',     defaultModel:'gpt-4o' },
+    { id:'gemini',     label:'gemini',      defaultModel:'gemini-2.0-flash' },
+    { id:'grok',       label:'grok',        defaultModel:'grok-2-latest' },
+    { id:'perplexity', label:'perplexity',  defaultModel:'sonar' }
+  ];
+
+  const LS = {
+    pwHash: 'relay_pw_hash',
+    keys: 'relay_keys',
+    enabled: 'relay_enabled',
+    history: 'relay_history'
+  };
+  const SS_UNLOCKED = 'relay_unlocked';
+
+  // ---------- utils ----------
+  async function sha256(str){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  function loadJSON(key, fallback){
+    try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch(e){ return fallback; }
+  }
+  function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+  function summarize(text){
+    const clean = text.trim().replace(/\s+/g,' ');
+    return clean.length > 46 ? clean.slice(0,46) + '…' : (clean || '(empty prompt)');
+  }
+  function fmtTime(ts){
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' +
+           d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  }
+
+  // ---------- lock screen ----------
+  const lockEl = document.getElementById('lock');
+  const appEl = document.getElementById('app');
+  const pwInput = document.getElementById('pw-input');
+  const pwSubmit = document.getElementById('pw-submit');
+  const pwErr = document.getElementById('pw-err');
+  const lockTitle = document.getElementById('lock-title');
+  const lockSub = document.getElementById('lock-sub');
+
+  function isFirstRun(){ return !localStorage.getItem(LS.pwHash); }
+
+  function refreshLockCopy(){
+    if(isFirstRun()){
+      lockTitle.textContent = '[setup] prompt relay';
+      lockSub.textContent = 'set a password for this device';
+      pwSubmit.textContent = 'set password';
+    } else {
+      lockTitle.textContent = '[locked] prompt relay';
+      lockSub.textContent = 'enter password to continue';
+      pwSubmit.textContent = 'unlock';
+    }
+  }
+
+  async function handlePwSubmit(){
+    const val = pwInput.value;
+    if(!val){ pwErr.textContent = 'enter a password'; return; }
+    if(isFirstRun()){
+      const hash = await sha256(val);
+      localStorage.setItem(LS.pwHash, hash);
+      unlock();
+    } else {
+      const hash = await sha256(val);
+      if(hash === localStorage.getItem(LS.pwHash)){
+        unlock();
+      } else {
+        pwErr.textContent = 'wrong password';
+        pwInput.value = '';
+      }
+    }
+  }
+  function unlock(){
+    sessionStorage.setItem(SS_UNLOCKED, '1');
+    lockEl.style.display = 'none';
+    appEl.style.display = 'block';
+    pwErr.textContent = '';
+    pwInput.value = '';
+  }
+  pwSubmit.addEventListener('click', handlePwSubmit);
+  pwInput.addEventListener('keydown', e=>{ if(e.key==='Enter') handlePwSubmit(); });
+  document.getElementById('lock-btn').addEventListener('click', ()=>{
+    sessionStorage.removeItem(SS_UNLOCKED);
+    location.reload();
+  });
+
+  refreshLockCopy();
+  if(sessionStorage.getItem(SS_UNLOCKED) === '1' && !isFirstRun()){
+    lockEl.style.display = 'none';
+    appEl.style.display = 'block';
+  }
+
+  // ---------- settings ----------
+  const settingsPanel = document.getElementById('settings');
+  const settingsRows = document.getElementById('settings-rows');
+  document.getElementById('toggle-settings').addEventListener('click', ()=>{
+    settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block';
+  });
+
+  let keyStore = loadJSON(LS.keys, {});     // { providerId: { key, model } }
+  let enabledStore = loadJSON(LS.enabled, PROVIDERS.reduce((a,p)=>(a[p.id]=true,a),{}));
+
+  function renderSettings(){
+    settingsRows.innerHTML = '';
+    PROVIDERS.forEach(p=>{
+      const row = document.createElement('div');
+      row.className = 'settings-row';
+      const cfg = keyStore[p.id] || {};
+      row.innerHTML = `
+        <label>${p.label}</label>
+        <input type="password" data-field="key" data-id="${p.id}" placeholder="api key" value="${cfg.key ? cfg.key : ''}">
+        <input type="text" data-field="model" data-id="${p.id}" placeholder="${p.defaultModel}" value="${cfg.model ? cfg.model : ''}">
+      `;
+      settingsRows.appendChild(row);
+    });
+    settingsRows.querySelectorAll('input').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        const id = inp.dataset.id, field = inp.dataset.field;
+        keyStore[id] = keyStore[id] || {};
+        keyStore[id][field] = inp.value.trim();
+        saveJSON(LS.keys, keyStore);
+        renderProviderRow();
+      });
+    });
+  }
+
+  // ---------- provider chips ----------
+  const providerRow = document.getElementById('provider-row');
+  function renderProviderRow(){
+    providerRow.innerHTML = '';
+    PROVIDERS.forEach(p=>{
+      const hasKey = !!(keyStore[p.id] && keyStore[p.id].key);
+      const on = enabledStore[p.id] !== false;
+      const chip = document.createElement('label');
+      chip.className = 'provider-chip' + (on ? ' on' : '');
+      chip.innerHTML = `
+        <input type="checkbox" ${on ? 'checked' : ''} data-id="${p.id}">
+        <span class="dot ${hasKey ? 'ready' : 'missing'}"></span>
+        <span>${p.label}</span>
+      `;
+      providerRow.appendChild(chip);
+      chip.querySelector('input').addEventListener('change', (e)=>{
+        enabledStore[p.id] = e.target.checked;
+        saveJSON(LS.enabled, enabledStore);
+        chip.classList.toggle('on', e.target.checked);
+      });
+    });
+  }
+
+  renderSettings();
+  renderProviderRow();
+
+  // ---------- provider calls ----------
+  async function callClaude(key, model, prompt){
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key': key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({ model, max_tokens:1024, messages:[{role:'user', content: prompt}] })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message || `http ${res.status}`);
+    return (data.content || []).map(b=>b.text || '').join('\n').trim() || '(empty response)';
+  }
+
+  async function callOpenAI(key, model, prompt){
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method:'POST',
+      headers:{ 'content-type':'application/json', 'authorization':`Bearer ${key}` },
+      body: JSON.stringify({ model, messages:[{role:'user', content: prompt}] })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message || `http ${res.status}`);
+    return data.choices?.[0]?.message?.content?.trim() || '(empty response)';
+  }
+
+  async function callGemini(key, model, prompt){
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+      method:'POST',
+      headers:{ 'content-type':'application/json' },
+      body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }] })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message || `http ${res.status}`);
+    return data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('').trim() || '(empty response)';
+  }
+
+  async function callGrok(key, model, prompt){
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method:'POST',
+      headers:{ 'content-type':'application/json', 'authorization':`Bearer ${key}` },
+      body: JSON.stringify({ model, messages:[{role:'user', content: prompt}] })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message || `http ${res.status}`);
+    return data.choices?.[0]?.message?.content?.trim() || '(empty response)';
+  }
+
+  async function callPerplexity(key, model, prompt){
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method:'POST',
+      headers:{ 'content-type':'application/json', 'authorization':`Bearer ${key}` },
+      body: JSON.stringify({ model, messages:[{role:'user', content: prompt}] })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data?.error?.message || `http ${res.status}`);
+    return data.choices?.[0]?.message?.content?.trim() || '(empty response)';
+  }
+
+  const CALLERS = {
+    claude: callClaude,
+    chatgpt: callOpenAI,
+    gemini: callGemini,
+    grok: callGrok,
+    perplexity: callPerplexity
+  };
+
+  // ---------- send flow ----------
+  const promptInput = document.getElementById('prompt-input');
+  const charCount = document.getElementById('char-count');
+  const resultsEl = document.getElementById('results');
+  const sendBtn = document.getElementById('send-btn');
+
+  promptInput.addEventListener('input', ()=>{
+    charCount.textContent = promptInput.value.length + ' chars';
+  });
+
+  function friendlyError(err){
+    const msg = (err && err.message) || 'request failed';
+    if(msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')){
+      return 'blocked (likely cors) — this provider may need a server-side relay from a static page';
+    }
+    return msg;
+  }
+
+  function renderResultsSkeleton(providerIds){
+    resultsEl.innerHTML = '';
+    providerIds.forEach(id=>{
+      const p = PROVIDERS.find(pp=>pp.id===id);
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = `card-${id}`;
+      card.innerHTML = `
+        <div class="card-head"><span>${p.label}</span><span class="dim">…</span></div>
+        <div class="card-body pending">sending…</div>
+        <div class="card-foot"><span></span><button disabled>copy</button></div>
+      `;
+      resultsEl.appendChild(card);
+    });
+  }
+
+  function fillCard(id, status, text, ms){
+    const card = document.getElementById(`card-${id}`);
+    if(!card) return;
+    const head = card.querySelector('.card-head span:last-child');
+    const body = card.querySelector('.card-body');
+    const foot = card.querySelector('.card-foot');
+    body.classList.remove('pending','err');
+    if(status === 'ok'){
+      head.textContent = 'ok';
+      head.style.color = 'var(--green)';
+      body.textContent = text;
+      foot.innerHTML = `<span>${ms}ms</span><button class="copy-btn">copy</button>`;
+      foot.querySelector('.copy-btn').addEventListener('click', ()=>{
+        navigator.clipboard.writeText(text);
+        foot.querySelector('.copy-btn').textContent = 'copied';
+        setTimeout(()=>{ foot.querySelector('.copy-btn').textContent = 'copy'; }, 1200);
+      });
+    } else if(status === 'skip'){
+      head.textContent = 'skipped';
+      head.style.color = 'var(--text-dim)';
+      body.textContent = text;
+      foot.innerHTML = `<span></span><button disabled>copy</button>`;
+    } else {
+      head.textContent = 'error';
+      head.style.color = 'var(--red)';
+      body.classList.add('err');
+      body.textContent = text;
+      foot.innerHTML = `<span></span><button disabled>copy</button>`;
+    }
+  }
+
+  async function sendPrompt(){
+    const prompt = promptInput.value.trim();
+    if(!prompt) return;
+    const activeIds = PROVIDERS.filter(p => enabledStore[p.id] !== false).map(p=>p.id);
+    if(activeIds.length === 0) return;
+
+    sendBtn.disabled = true;
+    renderResultsSkeleton(activeIds);
+
+    const responses = {};
+
+    await Promise.all(activeIds.map(async id=>{
+      const cfg = keyStore[id] || {};
+      const provider = PROVIDERS.find(p=>p.id===id);
+      if(!cfg.key){
+        const msg = 'no api key set — add one in settings';
+        responses[id] = { status:'skip', text: msg };
+        fillCard(id, 'skip', msg);
+        return;
+      }
+      const model = cfg.model || provider.defaultModel;
+      const start = performance.now();
+      try{
+        const text = await CALLERS[id](cfg.key, model, prompt);
+        const ms = Math.round(performance.now() - start);
+        responses[id] = { status:'ok', text, ms };
+        fillCard(id, 'ok', text, ms);
+      }catch(err){
+        const msg = friendlyError(err);
+        responses[id] = { status:'error', text: msg };
+        fillCard(id, 'error', msg);
+      }
+    }));
+
+    saveHistoryEntry(prompt, responses);
+    sendBtn.disabled = false;
+  }
+
+  sendBtn.addEventListener('click', sendPrompt);
+  promptInput.addEventListener('keydown', e=>{
+    if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendPrompt();
+  });
+
+  // ---------- history ----------
+  const historyEl = document.getElementById('history');
+  let history = loadJSON(LS.history, []);
+
+  function saveHistoryEntry(prompt, responses){
+    history.unshift({ ts: Date.now(), prompt, summary: summarize(prompt), responses });
+    history = history.slice(0,5);
+    saveJSON(LS.history, history);
+    renderHistory();
+  }
+
+  function renderHistory(){
+    historyEl.innerHTML = '';
+    if(history.length === 0){
+      historyEl.innerHTML = '<div class="empty">history will appear here.</div>';
+      return;
+    }
+    history.forEach((h, i)=>{
+      const tile = document.createElement('div');
+      tile.className = 'hist-tile';
+      tile.innerHTML = `
+        <div class="n">[0${i}]</div>
+        <div class="summary">${h.summary}</div>
+        <div class="ts">${fmtTime(h.ts)}</div>
+      `;
+      tile.addEventListener('click', ()=>{
+        promptInput.value = h.prompt;
+        charCount.textContent = h.prompt.length + ' chars';
+        const activeIds = Object.keys(h.responses);
+        renderResultsSkeleton(activeIds);
+        activeIds.forEach(id=>{
+          const r = h.responses[id];
+          fillCard(id, r.status, r.text, r.ms);
+        });
+        window.scrollTo({top:0, behavior:'smooth'});
+      });
+      historyEl.appendChild(tile);
+    });
+  }
+
+  renderHistory();
+})();
+</script>
+</body>
+</html>
